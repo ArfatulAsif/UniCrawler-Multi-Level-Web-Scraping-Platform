@@ -1,6 +1,6 @@
 
 
-# **Project: UniCrawler High-End**
+# **Project: UniCrawler BFS-Spider**
 
 ### **Mission Statement**
 
