@@ -8,6 +8,9 @@ To build a scalable, distributed crawler capable of extracting specific intellig
 
 ----------
 
+
+
+
 ## **1. System Architecture**
 
 The system follows a **Event-Driven, Stateless Architecture**. It is designed to be a "Pipe," not a "Bucket." Data flows through it; it doesn't stay in it.
@@ -113,6 +116,16 @@ uni_crawler_frontend/
 ```
 
 ----------
+
+
+<img src="1.png">
+
+<img src="2.png">
+
+<img src="3.png">
+
+
+
 
 ## **3. Detailed Functionality**
 
