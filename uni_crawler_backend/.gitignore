@@ -1,0 +1,36 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
+venv/
+env/
+.venv/
+.env
+
+# --- Environment Variables (CRITICAL) ---
+.env
+.env.local
+.env.*
+!.env.example
+
+# --- Logs & Databases ---
+*.log
+*.sqlite3
+celerybeat-schedule
+celerybeat.pid
+
+# --- IDE Settings ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Docker ---
+# If you mount volumes locally, ignore them
+docker-data/
+
+# --- OS Junk ---
+.DS_Store
+Thumbs.db
