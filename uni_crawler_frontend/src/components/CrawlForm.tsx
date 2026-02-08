@@ -1,0 +1,99 @@
+// src/components/CrawlForm.tsx
+import React, { useState } from 'react';
+import { Play, Plus, X, Globe } from 'lucide-react';
+
+interface Props {
+  onStart: (url: string, keywords: string[]) => void;
+  isLoading: boolean;
+}
+
+export const CrawlForm: React.FC<Props> = ({ onStart, isLoading }) => {
+  const [url, setUrl] = useState('');
+  const [keywordInput, setKeywordInput] = useState('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+
+  const addKeyword = () => {
+    if (keywordInput.trim() && !keywords.includes(keywordInput.trim())) {
+      setKeywords([...keywords, keywordInput.trim()]);
+      setKeywordInput('');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addKeyword();
+    }
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
+      <div className="flex flex-col gap-4">
+        {/* URL Input */}
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Target University URL</label>
+          <div className="relative">
+            <Globe className="absolute left-3 top-3 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="https://www.cam.ac.uk"
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Keywords Input */}
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Search Keywords</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Add keyword (e.g. Scholarship)..."
+              className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              value={keywordInput}
+              onChange={(e) => setKeywordInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <button 
+              onClick={addKeyword}
+              className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg transition-colors"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+          
+          {/* Tags Display */}
+          {keywords.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {keywords.map((k, i) => (
+                <span key={i} className="px-3 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-sm font-medium flex items-center gap-1.5 animate-slide-in">
+                  {k}
+                  <button onClick={() => setKeywords(keywords.filter((_, idx) => idx !== i))} className="hover:text-blue-900">
+                    <X size={14} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Action Button */}
+        <button
+          onClick={() => onStart(url, keywords)}
+          disabled={isLoading || !url || keywords.length === 0}
+          className="mt-2 w-full py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 transition-all shadow-md hover:shadow-lg"
+        >
+          {isLoading ? (
+            'Initializing Swarm...'
+          ) : (
+            <>
+              <Play size={18} fill="currentColor" /> Launch Intelligence Crawler
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};

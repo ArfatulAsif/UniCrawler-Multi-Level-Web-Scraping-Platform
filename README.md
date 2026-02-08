@@ -1,261 +1,490 @@
 
-# Data Automate and multi-level web scrapping:
 
+# **Project: UniCrawler High-End**
 
-## 1. Scraping a multi-level website (site with pages inside pages)
+### **Mission Statement**
 
-A **multi-level website** usually looks like this:
+To build a scalable, distributed crawler capable of extracting specific intelligence (scholarships, admissions, research grants) from modern, complex university websites and streaming the results instantly to a user dashboard without persistent storage latency.
 
-```
-Homepage
- ├── Category pages
- │     ├── Subcategory pages
- │     │       ├── Detail pages
-```
+----------
 
-Example:
+## **1. System Architecture**
 
-* Homepage → list of product categories
-* Category → list of products
-* Product page → price, description, specs
+The system follows a **Event-Driven, Stateless Architecture**. It is designed to be a "Pipe," not a "Bucket." Data flows through it; it doesn't stay in it.
 
-### Core idea: crawl → extract → repeat
+### **The Data Flow (Lifecycle of a Request)**
 
-You scrape it **layer by layer**.
+1.  **Initiation:** User submits `cam.ac.uk` + `["Scholarship", "PhD"]` via React Frontend.
+    
+2.  **Dispatch:** FastAPI generates a `Job ID` (e.g., `job_123`) and pushes the seed URL to Redis Queue.
+    
+3.  **Connection:** React immediately subscribes to WebSocket channel `ws://api/stream/job_123`.
+    
+4.  **The Swarm:** 10+ Celery Workers (in Docker) pick up tasks in parallel.
+    
+    -   **Worker A** parses HTML.
+        
+    -   **Worker B** renders JavaScript (Playwright).
+        
+    -   **Worker C** extracts text from a PDF.
+        
+5.  **Discovery:** When a worker finds a match, it publishes the data to Redis Pub/Sub.
+    
+6.  **Delivery:** FastAPI's WebSocket listener catches the message and pushes it to React.
+    
+7.  **Visualization:** The user sees the result appear instantly on the dashboard.
+    
 
-### Step-by-step logic
+----------
 
-#### Step 1: Start at the entry page
+## **2. Project Directory Structure**
 
-* Fetch the homepage or category page
-* Extract all links you care about (e.g., category URLs)
+The project is split into two distinct repositories/folders: `backend` and `frontend`.
 
-#### Step 2: Visit each extracted link
+### **A. Backend Structure (Python/FastAPI)**
 
-* Loop through those URLs
-* For each page, extract:
-
-  * Data you want
-  * Links to the *next* level
-
-#### Step 3: Repeat until you reach the final level
-
-* Keep going deeper until you reach pages that contain only data (no more useful links)
-
----
-
-### Example flow (pseudo-logic)
-
-```text
-queue = [start_url]
-
-while queue not empty:
-    url = queue.pop()
-    html = download(url)
-
-    data = extract_data(html)
-    save(data)
-
-    links = extract_links(html)
-    add links to queue (if not visited)
-```
-
-Key techniques:
-
-* **Queue or recursion** to manage levels
-* **Visited URL tracking** to avoid infinite loops
-* **URL filtering** (only follow links that match patterns you want)
-
----
-
-### Example in Python (simplified)
-
-```python
-import requests
-from bs4 import BeautifulSoup
-
-visited = set()
-to_visit = ["https://example.com/categories"]
-
-while to_visit:
-    url = to_visit.pop()
-    if url in visited:
-        continue
-
-    visited.add(url)
-    html = requests.get(url).text
-    soup = BeautifulSoup(html, "html.parser")
-
-    # Extract data
-    titles = soup.select(".product-title")
-    for t in titles:
-        print(t.text)
-
-    # Find next-level links
-    links = soup.select("a")
-    for link in links:
-        href = link.get("href")
-        if href and "/product/" in href:
-            to_visit.append("https://example.com" + href)
-```
-
-That’s the **multi-level scraping pattern** in a nutshell.
-
----
-
-## 2. Scraping JavaScript-rendered websites (the tricky part)
-
-A **JavaScript-rendered site** does NOT load data in the initial HTML.
-
-What happens instead:
-
-1. Browser loads empty HTML
-2. JavaScript runs
-3. JavaScript fetches data from an API
-4. Page updates dynamically
-
-### Why normal scraping fails
-
-If you use `requests` or `fetch`:
-
-* You only get the **empty shell**
-* The data never appears
-
----
-
-## Two main ways to scrape JS-rendered sites
-
-### Option A: Use a real browser (most common)
-
-You simulate a real browser using **headless browsers**.
-
-Popular tools:
-
-* **Playwright** (modern, fast, reliable)
-* **Puppeteer**
-* **Selenium**
-
-These:
-
-* Execute JavaScript
-* Wait for content to load
-* Let you interact with the page
-
----
-
-### Example with Playwright (JavaScript)
-
-```js
-const { chromium } = require('playwright');
-
-(async () => {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-
-  await page.goto('https://example.com');
-  await page.waitForSelector('.product-card');
-
-  const products = await page.$$eval('.product-card', cards =>
-    cards.map(card => ({
-      title: card.querySelector('.title').innerText,
-      price: card.querySelector('.price').innerText
-    }))
-  );
-
-  console.log(products);
-  await browser.close();
-})();
-```
-
-This works because:
-
-* JavaScript runs
-* Data loads
-* You scrape what the user actually sees
-
----
-
-### Option B: Skip the browser and hit the API directly (best when possible)
-
-Many JS sites secretly load data like this:
+Plaintext
 
 ```
-GET https://example.com/api/products?page=2
+uni_crawler_backend/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                  # Entry point (FastAPI App)
+│   │
+│   ├── api/                     # API Interface
+│   │   ├── __init__.py
+│   │   ├── routes.py            # POST /crawl (Starts job)
+│   │   └── websocket.py         # WS /stream/{job_id} (Data Pipe)
+│   │
+│   ├── core/                    # Infrastructure
+│   │   ├── config.py            # Loads .env variables
+│   │   ├── celery_app.py        # Task Queue Configuration
+│   │   └── redis_client.py      # Async Redis Connection
+│   │
+│   ├── crawler/                 # The Intelligence Engine
+│   │   ├── __init__.py
+│   │   ├── manager.py           # Logic: Decisions & Scoring
+│   │   ├── fetcher.py           # Tool: Hybrid HTTPX/Playwright
+│   │   ├── extractor.py         # Tool: Selectolax/PyPDF Parser
+│   │   └── utils.py             # User-Agent rotation, URL cleaning
+│   │
+│   ├── tasks/                   # The Workers
+│   │   ├── __init__.py
+│   │   └── worker.py            # The Celery Task definitions
+│   │
+│   └── schemas/                 # Data Models
+│       └── messages.py          # Pydantic models for WebSocket msgs
+│
+├── .env                         # Secrets (Redis URL, concurrency)
+├── docker-compose.yml           # Orchestration
+├── Dockerfile.api               # API Container Image
+├── Dockerfile.worker            # Worker Container Image
+└── requirements.txt             # Dependencies
+
 ```
 
-If you find this:
+### **B. Frontend Structure (React/TypeScript)**
 
-* You **don’t need browser automation**
-* Scraping becomes faster, cheaper, cleaner
+Plaintext
 
-How to find APIs:
+```
+uni_crawler_frontend/
+├── public/
+├── src/
+│   ├── components/
+│   │   ├── CrawlForm.tsx        # Input for URL & Keywords
+│   │   ├── ResultsTable.tsx     # Live Data Grid
+│   │   └── StatusBadge.tsx      # Connection Indicator
+│   │
+│   ├── hooks/
+│   │   └── useCrawler.ts        # WebSocket & State Logic
+│   │
+│   ├── types/
+│   │   └── index.ts             # TS Interfaces (CrawlResult)
+│   │
+│   ├── App.tsx                  # Layout
+│   ├── main.tsx                 # Entry
+│   └── index.css                # Tailwind Styles
+│
+├── package.json
+├── tailwind.config.js
+└── tsconfig.json
 
-* Open DevTools → Network tab
-* Reload page
-* Look for `XHR` / `Fetch` requests returning JSON
-
-Then you can do:
-
-```python
-import requests
-
-response = requests.get(
-    "https://example.com/api/products",
-    headers={"Authorization": "Bearer ..."}
-)
-
-data = response.json()
 ```
 
-This is **elite-tier scraping** 😎
+----------
 
----
+## **3. Detailed Functionality**
 
-## 3. Multi-level + JavaScript together
+### **Backend Functionality**
 
-For complex sites:
+#### **1. The Hybrid Fetcher (`app/crawler/fetcher.py`)**
 
-* Use **Playwright**
-* Navigate levels programmatically
-* Extract links at each level
-* Visit them one by one
+-   **Smart Switching:**
+    
+    -   Tries `httpx` (Async HTTP) first for speed (100ms).
+        
+    -   If response body < 2kb or contains `<div id="root">`, it assumes a React App.
+        
+    -   **Fallback:** Launches `Playwright` (Headless Chromium) to execute JS and wait for content (2-5s).
+        
+-   **PDF Interception:**
+    
+    -   Detects `Content-Type: application/pdf`.
+        
+    -   Downloads bytes directly instead of parsing as HTML.
+        
 
-Example flow:
+#### **2. The Universal Parser (`app/crawler/extractor.py`)**
 
-1. Load category page
-2. Wait for JS to render
-3. Extract product URLs
-4. Visit each product URL
-5. Scrape details
+-   **HTML:** Uses `selectolax` to remove "noise" (navbars, footers, sidebars).
+    
+-   **PDF:** Uses `pypdf` to extract text layers from documents.
+    
+-   **Keyword Scoring:** Checks if keywords (e.g., "Scholarship") appear in the _content area_, not just the menu.
+    
 
----
+#### **3. The Real-Time Stream (`app/api/websocket.py`)**
 
-## 4. Common challenges (and how people solve them)
+-   **Pub/Sub:** Uses Redis Channels.
+    
+-   **Mechanism:**
+    
+    -   `Frontend` connects to `ws://.../stream/job_123`.
+        
+    -   `Worker` finds data -> `redis.publish('job_123', json_data)`.
+        
+    -   `WebSocket` receives -> `await websocket.send_json(data)`.
+        
 
-| Problem            | Solution                              |
-| ------------------ | ------------------------------------- |
-| Infinite scrolling | Scroll programmatically               |
-| Pagination         | Click “Next” or modify page params    |
-| Anti-bot detection | Slower actions, real browser, headers |
-| Login required     | Automate login once, reuse session    |
-| Rate limits        | Delays, retries                       |
+#### **4. Distributed Workers (`app/tasks/worker.py`)**
 
----
+-   **Concurrency:** Runs multiple worker processes per container.
+    
+-   **Deduplication:** Uses a Redis Set (`visited:job_123`) to ensure no URL is crawled twice.
+    
+-   **Recursion:** If a worker finds a new link on the same domain, it pushes it back to the queue for _another_ worker to pick up.
+    
 
-## Mental model to remember
+----------
 
-* **Multi-level scraping** = follow links like a spider 🕷️
-* **JS websites** = either run a browser or find the hidden API
-* **Best scrapers** avoid rendering when possible
+### **Frontend Functionality**
 
----
+#### **1. The Dashboard (`App.tsx`)**
 
-If you want, I can:
+-   **Input:** Accepts a target URL and a list of tags (keywords).
+    
+-   **State:** Tracks `Connecting`, `Scanning`, `Idle`.
+    
 
-* Walk through a **real website example**
-* Show **Playwright vs Selenium vs Puppeteer**
-* Help you choose **Python vs JavaScript**
-* Explain **legal & ethical boundaries**
-* Or help you design a scraper for a site you have in mind (no links needed)
+#### **2. The Live Hook (`useCrawler.ts`)**
 
-Just say the word 👀
+-   **Connection Management:** Automatically opens/closes WebSockets.
+    
+-   **Buffer:** Appends new results to the top of the list (`[new, ...old]`).
+    
+-   **Error Handling:** Detects if the backend disconnects and alerts the user.
+    
+
+#### **3. The Visualization (`ResultsTable.tsx`)**
+
+-   **Instant Feedback:** Rows animate in as they arrive. Row after Row.
+    
+-   **Context:** Shows a text snippet (context) of where the keyword was found (e.g., "...students are eligible for the **Full Ride Scholarship** if...").
+    
+-   **Action:** Provides a direct link to the source page/PDF.
+    
+
+----------
+
+## **4. Deployment & Orchestration**
+
+The system is deployed using **Docker Compose**, creating a self-contained ecosystem.
+
+**`docker-compose.yml` Configuration:**
+
+**Service**
+
+**Image**
+
+**Role**
+
+**`redis`**
+
+`redis:alpine`
+
+**The Brain.** Holds the Job Queue, Visited Set, and Pub/Sub channels.
+
+**`api`**
+
+`Dockerfile.api`
+
+**The Face.** Exposes port `8000`. Handles HTTP/WS requests.
+
+**`worker`**
+
+`Dockerfile.worker`
+
+**The Muscle.** Replicated 4x. Each container runs 10 concurrent threads.
+
+**Scaling Command:**
+
+To increase crawling power from 40 to 100 concurrent browsers:
+
+Bash
+
+```
+docker-compose up -d --scale worker=10
+
+```
+
+----------
+
+## **5. How to Run (Development)**
+
+**Step 1: Start Infrastructure**
+
+Bash
+
+```
+cd uni_crawler_backend
+docker-compose up -d redis
+
+```
+
+**Step 2: Start Backend**
+
+Bash
+
+```
+# Terminal 1 (API)
+uvicorn app.main:app --reload
+
+# Terminal 2 (Worker)
+celery -A app.core.celery_app worker --loglevel=info
+
+```
+
+**Step 3: Start Frontend**
+
+Bash
+
+```
+cd uni_crawler_frontend
+npm run dev
+
+```
+
+**Step 4: Execute**
+
+1.  Open `localhost:5173`.
+    
+2.  Enter `https://www.cam.ac.uk`.
+    
+3.  Add Keyword: `Scholarship`.
+    
+4.  Click **Launch**.
+    
+5.  Watch data stream in.This is the **Master Documentation** for **UniCrawler High-End**.
+
+This document serves as the blueprint for building a distributed, real-time intelligence gathering system. It details the architecture, directory structure, and the exact flow of data from a raw URL to the user's screen.
+
+----------
+
+# **Project: UniCrawler High-End**
+
+### **Mission Statement**
+
+To build a scalable, distributed crawler capable of extracting specific intelligence (scholarships, admissions, research grants) from modern, complex university websites and streaming the results instantly to a user dashboard without persistent storage latency.
+
+----------
+
+## **1. System Architecture**
+
+The system follows a **Event-Driven, Stateless Architecture**. It is designed to be a "Pipe," not a "Bucket." Data flows through it; it doesn't stay in it.
+
+### **The Data Flow (Lifecycle of a Request)**
+
+1.  **Initiation:** User submits `cam.ac.uk` + `["Scholarship", "PhD"]` via React Frontend.
+    
+2.  **Dispatch:** FastAPI generates a `Job ID` (e.g., `job_123`) and pushes the seed URL to Redis Queue.
+    
+3.  **Connection:** React immediately subscribes to WebSocket channel `ws://api/stream/job_123`.
+    
+4.  **The Swarm:** 10+ Celery Workers (in Docker) pick up tasks in parallel.
+    
+    -   **Worker A** parses HTML.
+        
+    -   **Worker B** renders JavaScript (Playwright).
+        
+    -   **Worker C** extracts text from a PDF.
+        
+5.  **Discovery:** When a worker finds a match, it publishes the data to Redis Pub/Sub.
+    
+6.  **Delivery:** FastAPI's WebSocket listener catches the message and pushes it to React.
+    
+7.  **Visualization:** The user sees the result appear instantly on the dashboard.
+    
+
+----------
+
+## **2. Project Directory Structure**
+
+The project is split into two distinct repositories/folders: `backend` and `frontend`.
+
+### **A. Backend Structure (Python/FastAPI)**
+
+Plaintext
+
+```
+uni_crawler_backend/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                  # Entry point (FastAPI App)
+│   │
+│   ├── api/                     # API Interface
+│   │   ├── __init__.py
+│   │   ├── routes.py            # POST /crawl (Starts job)
+│   │   └── websocket.py         # WS /stream/{job_id} (Data Pipe)
+│   │
+│   ├── core/                    # Infrastructure
+│   │   ├── config.py            # Loads .env variables
+│   │   ├── celery_app.py        # Task Queue Configuration
+│   │   └── redis_client.py      # Async Redis Connection
+│   │
+│   ├── crawler/                 # The Intelligence Engine
+│   │   ├── __init__.py
+│   │   ├── manager.py           # Logic: Decisions & Scoring
+│   │   ├── fetcher.py           # Tool: Hybrid HTTPX/Playwright
+│   │   ├── extractor.py         # Tool: Selectolax/PyPDF Parser
+│   │   └── utils.py             # User-Agent rotation, URL cleaning
+│   │
+│   ├── tasks/                   # The Workers
+│   │   ├── __init__.py
+│   │   └── worker.py            # The Celery Task definitions
+│   │
+│   └── schemas/                 # Data Models
+│       └── messages.py          # Pydantic models for WebSocket msgs
+│
+├── .env                         # Secrets (Redis URL, concurrency)
+├── docker-compose.yml           # Orchestration
+├── Dockerfile.api               # API Container Image
+├── Dockerfile.worker            # Worker Container Image
+└── requirements.txt             # Dependencies
+
+```
+
+### **B. Frontend Structure (React/TypeScript)**
+
+Plaintext
+
+```
+uni_crawler_frontend/
+├── public/
+├── src/
+│   ├── components/
+│   │   ├── CrawlForm.tsx        # Input for URL & Keywords
+│   │   ├── ResultsTable.tsx     # Live Data Grid
+│   │   └── StatusBadge.tsx      # Connection Indicator
+│   │
+│   ├── hooks/
+│   │   └── useCrawler.ts        # WebSocket & State Logic
+│   │
+│   ├── types/
+│   │   └── index.ts             # TS Interfaces (CrawlResult)
+│   │
+│   ├── App.tsx                  # Layout
+│   ├── main.tsx                 # Entry
+│   └── index.css                # Tailwind Styles
+│
+├── package.json
+├── tailwind.config.js
+└── tsconfig.json
+
+```
+
+----------
+
+## **3. Detailed Functionality**
+
+### **Backend Functionality**
+
+#### **1. The Hybrid Fetcher (`app/crawler/fetcher.py`)**
+
+-   **Smart Switching:**
+    
+    -   Tries `httpx` (Async HTTP) first for speed (100ms).
+        
+    -   If response body < 2kb or contains `<div id="root">`, it assumes a React App.
+        
+    -   **Fallback:** Launches `Playwright` (Headless Chromium) to execute JS and wait for content (2-5s).
+        
+-   **PDF Interception:**
+    
+    -   Detects `Content-Type: application/pdf`.
+        
+    -   Downloads bytes directly instead of parsing as HTML.
+        
+
+#### **2. The Universal Parser (`app/crawler/extractor.py`)**
+
+-   **HTML:** Uses `selectolax` to remove "noise" (navbars, footers, sidebars).
+    
+-   **PDF:** Uses `pypdf` to extract text layers from documents.
+    
+-   **Keyword Scoring:** Checks if keywords (e.g., "Scholarship") appear in the _content area_, not just the menu.
+    
+
+#### **3. The Real-Time Stream (`app/api/websocket.py`)**
+
+-   **Pub/Sub:** Uses Redis Channels.
+    
+-   **Mechanism:**
+    
+    -   `Frontend` connects to `ws://.../stream/job_123`.
+        
+    -   `Worker` finds data -> `redis.publish('job_123', json_data)`.
+        
+    -   `WebSocket` receives -> `await websocket.send_json(data)`.
+        
+
+#### **4. Distributed Workers (`app/tasks/worker.py`)**
+
+-   **Concurrency:** Runs multiple worker processes per container.
+    
+-   **Deduplication:** Uses a Redis Set (`visited:job_123`) to ensure no URL is crawled twice.
+    
+-   **Recursion:** If a worker finds a new link on the same domain, it pushes it back to the queue for _another_ worker to pick up.
+    
+
+----------
+
+### **Frontend Functionality**
+
+#### **1. The Dashboard (`App.tsx`)**
+
+-   **Input:** Accepts a target URL and a list of tags (keywords).
+    
+-   **State:** Tracks `Connecting`, `Scanning`, `Idle`.
+    
+
+#### **2. The Live Hook (`useCrawler.ts`)**
+
+-   **Connection Management:** Automatically opens/closes WebSockets.
+    
+-   **Buffer:** Appends new results to the top of the list (`[new, ...old]`).
+    
+-   **Error Handling:** Detects if the backend disconnects and alerts the user.
+    
+
+#### **3. The Visualization (`ResultsTable.tsx`)**
+
+-   **Instant Feedback:** Rows animate in as they arrive.
+    
+-   **Context:** Shows a text snippet (context) of where the keyword was found (e.g., "...students are eligible for the **Full Ride Scholarship** if...").
+    
+-   **Action:** Provides a direct link to the source page/PDF.
+    
+
+----------
+
