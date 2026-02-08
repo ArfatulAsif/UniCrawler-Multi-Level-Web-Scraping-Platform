@@ -1,8 +1,6 @@
 
 # Data Automate and multi-level web scrapping:
 
-here
-
 
 ## 1. Scraping a multi-level website (site with pages inside pages)
 
