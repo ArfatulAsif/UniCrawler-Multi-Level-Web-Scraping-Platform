@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # 1. THE DATABASE
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  # 2. THE API (FastAPI)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app  # Live code reloading
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+
+  # 3. THE WORKER SWARM (Celery)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    volumes:
+      - .:/app
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis

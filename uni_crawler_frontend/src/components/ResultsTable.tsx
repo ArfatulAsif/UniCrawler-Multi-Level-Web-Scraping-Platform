@@ -1,58 +1,77 @@
 // src/components/ResultsTable.tsx
 import React from 'react';
-import { ExternalLink, FileText, Calendar } from 'lucide-react';
+import { ExternalLink, Clock, Zap } from 'lucide-react'; 
 import type { CrawlResult } from '../types';
 
-export const ResultsTable: React.FC<{ results: CrawlResult[] }> = ({ results }) => {
-  if (results.length === 0) return (
-    <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-      Waiting for data stream...
-    </div>
-  );
+interface ResultsTableProps {
+  results: CrawlResult[];
+}
+
+export function ResultsTable({ results }: ResultsTableProps) {
+  if (results.length === 0) {
+    return (
+      <div className="text-center py-12 bg-white rounded-xl border border-gray-200 border-dashed">
+        <p className="text-gray-500">No intelligence data gathered yet.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider border-b border-gray-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-6 py-3">Source URL</th>
-              <th className="px-6 py-3">Intelligence Context</th>
-              <th className="px-6 py-3 w-32">Action</th>
+              <th className="px-6 py-3 font-semibold text-gray-900 w-24">Score</th>
+              <th className="px-6 py-3 font-semibold text-gray-900">Found Content</th>
+              <th className="px-6 py-3 font-semibold text-gray-900 w-32 text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
-            {results.map((res, i) => (
-              <tr key={i} className="hover:bg-blue-50/50 transition-colors animate-slide-in">
-                <td className="px-6 py-4 align-top">
-                  <div className="font-medium text-gray-900 line-clamp-1">{res.title || 'Untitled Document'}</div>
-                  <div className="text-xs text-blue-500 mt-1 truncate max-w-[250px] font-mono bg-blue-50 inline-block px-1.5 py-0.5 rounded">
-                    {res.url}
+          <tbody className="divide-y divide-gray-200">
+            {results.map((result, index) => (
+              <tr key={index} className="hover:bg-gray-50 transition-colors group">
+                
+                {/* 1. SCORE COLUMN */}
+                <td className="px-6 py-4 whitespace-nowrap align-top">
+                  <div className={`
+                    inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium
+                    ${result.score >= 40 ? 'bg-green-100 text-green-800' : 
+                      result.score >= 20 ? 'bg-yellow-100 text-yellow-800' : 
+                      'bg-gray-100 text-gray-800'}
+                  `}>
+                    <Zap size={12} />
+                    {result.score.toFixed(1)}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-400 flex items-center gap-1">
+                    <Clock size={10} />
+                    {result.timestamp}
                   </div>
                 </td>
-                <td className="px-6 py-4 align-top">
-                  <div className="flex items-start gap-2">
-                    <FileText size={16} className="text-gray-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
-                        {res.snippet}
-                      </p>
-                      <div className="flex gap-2 mt-2">
-                         {res.matched_keywords?.map((k, idx) => (
-                           <span key={idx} className="text-[10px] font-bold px-1.5 py-0.5 bg-yellow-100 text-yellow-800 rounded">
-                             {k}
-                           </span>
-                         ))}
-                      </div>
+
+                {/* 2. CONTENT COLUMN */}
+                <td className="px-6 py-4">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="font-medium text-gray-900 text-base">{result.title}</h3>
+                    <p className="text-gray-600 line-clamp-3 leading-relaxed">
+                      {result.snippet}
+                    </p>
+                    <div className="flex gap-2 mt-2">
+                      {result.matched_keywords.map((keyword, k) => (
+                        <span key={k} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                          {keyword}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 align-top">
-                  <a 
-                    href={res.url} 
-                    target="_blank" 
+                
+                {/* 3. ACTION COLUMN */}
+                <td className="px-6 py-4 whitespace-nowrap text-right align-top">
+                  <a
+                    href={result.url}
+                    target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1.5 text-sm font-medium border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors w-fit"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0"
                   >
                     View <ExternalLink size={14} />
                   </a>
@@ -64,4 +83,4 @@ export const ResultsTable: React.FC<{ results: CrawlResult[] }> = ({ results }) 
       </div>
     </div>
   );
-};
+}

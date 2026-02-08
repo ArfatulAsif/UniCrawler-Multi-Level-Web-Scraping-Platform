@@ -1,48 +1,56 @@
-// src/hooks/useCrawler.ts
 import { useState, useRef, useCallback } from 'react';
 import axios from 'axios';
 import type { CrawlResult, ConnectionStatus } from '../types';
 
-const API_URL = 'http://localhost:8000'; // Backend URL
-
-
-
-
-
-
+const API_URL = 'http://localhost:8000'; 
 
 export const useCrawler = () => {
   const [results, setResults] = useState<CrawlResult[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>('idle');
+  const [activeUrls, setActiveUrls] = useState<string[]>([]); 
+  
+  // NEW: Counter for pages visited
+  const [pagesVisited, setPagesVisited] = useState<number>(0);
+
   const socketRef = useRef<WebSocket | null>(null);
 
-  const startCrawl = async (url: string, keywords: string[]) => {
-    // Reset state for new crawl
+  const startCrawl = async (url: string, keywords: string[], depth: number) => {
     setResults([]);
+    setActiveUrls([]); 
+    setPagesVisited(0); // Reset counter
     setStatus('connecting');
 
     try {
-      // 1. Send Command to Backend
       const response = await axios.post(`${API_URL}/api/crawl`, {
         url,
-        keywords
+        keywords,
+        depth 
       });
 
       const jobId = response.data.job_id;
       
-      // 2. Open Real-Time Stream
       const ws = new WebSocket(`ws://localhost:8000/api/stream/${jobId}`);
       socketRef.current = ws;
 
       ws.onopen = () => {
         setStatus('scanning');
-        console.log('Connected to Intelligence Stream');
       };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        // HIGH END FEATURE: Add new row to the TOP immediately
-        setResults((prev) => [data, ...prev]);
+        
+        if (data.type === 'progress') {
+            // 1. Increment Page Counter
+            setPagesVisited((prev) => prev + 1);
+
+            // 2. Update Visual Feed
+            setActiveUrls((prev) => {
+                const newList = [data.url, ...prev];
+                return newList.slice(0, 3); 
+            });
+        } else {
+            setResults((prev) => [data, ...prev]);
+        }
       };
 
       ws.onerror = (err) => {
@@ -62,12 +70,13 @@ export const useCrawler = () => {
     }
   };
 
+  // NEW: Stop function
   const stopCrawl = useCallback(() => {
     if (socketRef.current) {
-      socketRef.current.close();
+      socketRef.current.close(); // Cut the connection
       setStatus('idle');
     }
   }, [status]);
 
-  return { results, status, startCrawl, stopCrawl };
+  return { results, status, activeUrls, pagesVisited, startCrawl, stopCrawl };
 };

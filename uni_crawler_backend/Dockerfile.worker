@@ -1,0 +1,45 @@
+# Use Python 3.11 Slim
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 1. Install System Deps & Chromium Dependencies Manually
+# We added 'fonts-liberation', 'libxrandr2', 'xdg-utils' etc to fix the error.
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    # Chromium dependencies
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    # Fonts (This replaces the failing ttf-ubuntu packages)
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Install Python Deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 3. Install Playwright Browsers (Chromium only)
+# We REMOVED 'playwright install-deps' because we did it manually above.
+RUN playwright install chromium
+
+# 4. Copy Code
+COPY . .
+
+# 5. Command to run Celery Worker
+CMD ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info", "--concurrency=5"]

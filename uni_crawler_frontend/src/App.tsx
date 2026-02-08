@@ -1,12 +1,12 @@
-// src/App.tsx
-import { Bot, ShieldCheck } from 'lucide-react';
+import { Bot, ShieldCheck, Terminal, Globe } from 'lucide-react'; // Added Globe icon
 import { CrawlForm } from './components/CrawlForm';
 import { ResultsTable } from './components/ResultsTable';
 import { StatusBadge } from './components/StatusBadge';
 import { useCrawler } from './hooks/useCrawler';
 
 function App() {
-  const { results, status, startCrawl } = useCrawler();
+  // 1. Destructure pagesVisited and stopCrawl
+  const { results, status, activeUrls, pagesVisited, startCrawl, stopCrawl } = useCrawler();
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-20">
@@ -29,18 +29,43 @@ function App() {
       {/* Main Content */}
       <main className="max-w-3xl mx-auto px-4 mt-8">
         
-        {/* Connection Info */}
-        <div className="mb-6 flex items-center justify-between text-sm text-gray-500">
-          <span className="flex items-center gap-1.5">
-            <ShieldCheck size={16} className="text-green-600" /> Secure Connection
+        {/* Info Bar */}
+        <div className="mb-6 flex items-center justify-between text-sm text-gray-500 bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+          <span className="flex items-center gap-2">
+            <Globe size={16} className="text-blue-500" /> 
+            Pages Visited: <strong className="text-gray-900">{pagesVisited}</strong>
           </span>
-          <span>
-            Results found: <strong className="text-gray-900">{results.length}</strong>
+          <span className="flex items-center gap-2">
+            <ShieldCheck size={16} className="text-green-600" /> 
+            Results Found: <strong className="text-gray-900">{results.length}</strong>
           </span>
         </div>
 
+        {/* Thread Visualizer */}
+        {status === 'scanning' && (
+          <div className="mb-6 bg-gray-900 rounded-lg p-3 font-mono text-xs shadow-inner animate-slide-in">
+            <div className="flex items-center gap-2 mb-2 text-gray-400 border-b border-gray-800 pb-1">
+              <Terminal size={14} />
+              <span>Active Threads (5)</span>
+            </div>
+            <div className="space-y-1">
+              {activeUrls.map((url, index) => (
+                <div 
+                  key={index} 
+                  className="flex items-center gap-3 overflow-hidden" 
+                  style={{ opacity: 1 - (index * 0.3) }} 
+                >
+                  <span className="text-green-500">▶</span>
+                  <span className="text-green-100 truncate">{url}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <CrawlForm 
           onStart={startCrawl} 
+          onStop={stopCrawl} // Pass the stop function
           isLoading={status === 'connecting' || status === 'scanning'} 
         />
 
