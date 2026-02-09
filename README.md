@@ -9,6 +9,11 @@ To build a scalable, distributed crawler capable of extracting specific intellig
 ----------
 
 
+# Live Work:
+
+<img src="4.gif">
+
+
 
 
 ## **1. System Architecture**
@@ -147,10 +152,6 @@ uni_crawler_frontend/
 
 <img src="3.png">
 
-
-# Live Work:
-
-<img src="4.gif">
 
 
 
