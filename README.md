@@ -28,8 +28,11 @@ The system follows a **Event-Driven, Stateless Architecture**. It is designed to
     -   **Worker A** parses HTML.
         
     -   **Worker B** renders JavaScript (Playwright).
-        
-    -   **Worker C** extracts text from a PDF.
+    
+    -
+    
+    -
+
         
 5.  **Discovery:** When a worker finds a match, it publishes the data to Redis Pub/Sub.
     
