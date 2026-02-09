@@ -9,7 +9,7 @@ To build a scalable, distributed crawler capable of extracting specific intellig
 ----------
 
 
-# Live Work:
+# View Platform:
 
 <img src="4.gif">
 
