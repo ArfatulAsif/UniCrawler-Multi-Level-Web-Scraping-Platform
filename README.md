@@ -220,3 +220,187 @@ uni_crawler_frontend/
 ----------
 
 
+
+
+# Concept Implemented In this Project:
+
+
+### **Core Architecture & Design**
+
+-   **Event-Driven Architecture:** The system reacts to events (user requests, found links) rather than storing state in a traditional database.
+    
+-   **Stateless Design ("Pipe not Bucket"):** Data is streamed instantly to the client rather than being saved to a persistent disk database, reducing latency.
+    
+-   **Microservices Pattern:** Separation of concerns between the API server (FastAPI) and the background workers (Celery).
+    
+
+### **Concurrency & Distributed Systems**
+
+-   **Distributed Task Queues:** Using **Celery** to manage and distribute scraping jobs across multiple workers.
+    
+-   **Parallel Processing:** Running a "swarm" of workers to process multiple URLs simultaneously.
+    
+-   **Pub/Sub Messaging:** Using **Redis** to broadcast messages from workers to the API for real-time delivery.
+    
+
+### **Web Scraping & Algorithms**
+
+-   **Breadth-First Search (BFS):** The crawling algorithm that explores neighbor nodes (links) layer by layer.
+    
+-   **Hybrid Rendering Strategy:** Smart switching between lightweight HTTP requests (**HTTPX**) and heavy headless browsing (**Playwright**) based on page complexity.
+    
+-   **Recursive Crawling:** Workers triggering new jobs for discovered links within the same domain.
+    
+-   **Set-Based Deduplication:** Using Redis Sets to track visited URLs in O(1) time to prevent infinite loops.
+    
+
+
+### **Frontend & Real-Time UX**
+
+-   **WebSocket Communication:** Establishing persistent, bi-directional connections for live data streaming.
+    
+
+
+
+# How Implemented:
+
+
+
+Here is the mapping of your **High-Level Concepts** to your specific **File Structure**.
+
+This serves as a technical tour of your codebase.
+
+----------
+
+### **1. Core Architecture & Design**
+
+-   **Microservices Pattern**
+    
+    -   **Where:** `docker-compose.yml`
+        
+    -   **How:** You defined two distinct services: `api` (the brain/interface) and `worker` (the muscle). They scale independently. If you need 50 crawlers, you just scale the `worker` container, while the `api` container stays the same.
+        
+-   **Stateless Design ("Pipe not Bucket")**
+    
+    -   **Where:** `app/api/websocket.py` & `app/tasks/worker.py`
+        
+    -   **How:** Notice that `worker.py` **never** does `database.save()`. Instead, it does `redis_client.publish()`. The data exists only for the millisecond it takes to travel from the Worker $\to$ Redis $\to$ WebSocket $\to$ React.
+        
+
+----------
+
+### **2. Concurrency & Distributed Systems**
+
+-   **Distributed Task Queues (Celery)**
+    
+    -   **Where:** `app/core/celery_app.py`
+        
+    -   **How:** This file configures Celery to use Redis as a "Broker". It tells the system: "When I say `crawl_task.delay()`, don't run it here. Package it up and send it to Redis for any available worker to grab."
+        
+-   **Parallel Processing (The Swarm)**
+    
+    -   **Where:** `app/tasks/worker.py` (specifically `@celery_app.task`)
+        
+    -   **How:** When you run `docker-compose up --scale worker=4`, you spin up 4 copies of this file. They all listen to the same queue and process different URLs simultaneously.
+        
+-   **Pub/Sub Messaging**
+    
+    -   **Where:** `app/api/websocket.py` (The Subscriber) & `app/tasks/worker.py` (The Publisher)
+        
+    -   **How:**
+        
+        -   **Worker:** `redis_client.publish(f"job:{job_id}", json_payload)` (Shouts the result).
+            
+        -   **API:** `pubsub.subscribe(f"job:{job_id}")` (Listens for the result and pushes it to the socket).
+            
+
+----------
+
+### **3. Web Scraping & Algorithms**
+
+-   **Breadth-First Search (BFS)**
+    
+    -   **Where:** `app/tasks/worker.py`
+        
+    -   **How:** The `level` parameter acts as the BFS depth tracker.
+        
+        -   **Start:** User requests `level=2`.
+            
+        -   **Logic:** The worker finds links and calls `crawl_page_task.delay(..., level=level-1)`.
+            
+        -   **Stop:** When `level=0`, the recursion stops. This ensures you scan "neighbors" before going deeper.
+            
+-   **Hybrid Rendering Strategy**
+    
+    -   **Where:** `app/crawler/fetcher.py`
+        
+    -   **How:** The `fetch` method has an `if/else` block.
+        
+        -   **Step 1:** Try `httpx.get()` (Fast, 0.1s).
+            
+        -   **Step 2:** If the response is tiny or empty (React app), catch the error and switch to `_fetch_with_browser()` (Playwright, 3s).
+            
+-   **Recursive Crawling & Domain Guard**
+    
+    -   **Where:** `app/crawler/utils.py` (Function `is_same_domain`)
+        
+    -   **How:** Before triggering a new crawl task, the worker checks:
+        
+        `if URLUtils.is_same_domain(current_url, new_link): crawl_task.delay(...)`
+        
+        This ensures your bot doesn't accidentally wander off from `harvard.edu` to `facebook.com`.
+        
+-   **Set-Based Deduplication (O(1))**
+    
+    -   **Where:** `app/tasks/worker.py`
+        
+    -   **How:**
+        
+        Python
+        
+        ```
+        if redis_client.sismember(f"visited:{job_id}", url): return
+        redis_client.sadd(f"visited:{job_id}", url)
+        
+        ```
+        
+        This leverages Redis Sets to instantly check if a URL has been seen, even if you have processed 1 million pages.
+        
+
+----------
+
+### **4. Frontend & Real-Time UX**
+
+-   **WebSocket Communication**
+    
+    -   **Where:** `src/hooks/useCrawler.ts`
+        
+    -   **How:**
+        
+        TypeScript
+        
+        ```
+        const ws = new WebSocket(`ws://localhost:8000/api/stream/${jobId}`);
+        ws.onmessage = (event) => { setResults(...) };
+        
+        ```
+        
+        This hook manages the persistent connection. It listens for the "pings" from the backend and updates the React state essentially frame-by-frame.
+        
+-   **Data Visualization ("The Waterfall")**
+    
+    -   **Where:** `src/components/ResultsTable.tsx`
+        
+    -   **How:** The `results` array in React is prepended (`[newItem, ...oldItems]`). The table renders this array. Because the updates happen in real-time, the user sees rows "slide down" as the crawler discovers them.
+
+
+
+
+
+
+
+
+
+
+
+
