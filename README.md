@@ -43,6 +43,24 @@ The system follows a **Event-Driven, Stateless Architecture**. It is designed to
 
 ----------
 
+
+## Run the Project:
+
+**Backend**
+```
+cd uni_crawler_backend
+docker-compose up --build
+
+```
+
+**Frontend**
+```
+cd uni_crawler_frontend
+npm run dev
+
+```
+
+
 ## **2. Project Directory Structure**
 
 The project is split into two distinct repositories/folders: `backend` and `frontend`.
