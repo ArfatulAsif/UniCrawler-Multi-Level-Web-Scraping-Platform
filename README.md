@@ -428,7 +428,124 @@ This serves as a technical tour of your codebase.
 
 
 
+---
+---
 
+
+# 𝐓𝐞𝐜𝐡 𝐒𝐭𝐚𝐜𝐤: 🐍 Python, ⚡ FastAPI, 🔁 Celery, 🧠 Redis, ⚛️ React, 🐳 Docker
+
+
+
+
+
+# How Multiprocessing is implemented (Step-by-Step) (Using Celery and Redis)
+
+Your project achieves multiprocessing by spinning up **multiple independent worker processes**. These processes run at the same time (in parallel), each picking up a different URL from the queue.
+
+**The Flow:**
+
+**User Click**  **API (FastAPI)**  **Redis Queue**  **Celery Manager**  **Worker Processes (CPU Cores)**
+
+1. **Trigger:** User sends a request (URL + Keywords).
+2. **Dispatch:** `routes.py` receives the request  pushes a task to **Redis**.
+3. **Distribution:** **Celery** (running in the background) sees the new task in Redis.
+4. **Forking:** Celery assigns the task to an available **Worker Process** (e.g., Worker 1).
+5. **Execution:** Worker 1 starts crawling `cam.ac.uk`.
+6. **Discovery:** Worker 1 finds 5 new links.
+7. **Parallelism:** Worker 1 pushes those 5 links back to **Redis**.
+8. **Scaling:** Celery sees 5 new tasks  assigns them to **Worker 2**, **Worker 3**, **Worker 4**, etc.
+9. **Result:** Now, 5 workers are crawling 5 different pages **at the exact same time**.
+
+---
+
+### **2. File Interaction Sequence**
+
+This is the exact path the code takes when a user starts a crawl.
+
+**A. The Trigger (Frontend  API)**
+`App.tsx`  `useCrawler.ts`  `routes.py`
+
+> *(User clicks "Start"  React calls POST /crawl  FastAPI receives it)*
+
+**B. The Handoff (API  Queue)**
+`routes.py`  `celery_app.py`  **Redis Database**
+
+> *(FastAPI generates Job ID  Puts "Start Task" into Redis Memory)*
+
+**C. The Execution (Queue  Worker)**
+**Redis**  `worker.py` (@celery.task)
+
+> *(Celery detects the message  Wakes up a Worker process  Runs `crawl_page_task`)*
+
+**D. The Intelligence (Worker Logic)**
+`worker.py`  `fetcher.py`  `extractor.py`  `manager.py`
+
+> *(Worker downloads HTML  Cleans it  Ranks relevance)*
+
+**E. The Delivery (Worker  Frontend)**
+`worker.py`  **Redis Pub/Sub**  `websocket.py`  `useCrawler.ts`  `ResultsTable.tsx`
+
+> *(Worker shouts "Found it!"  API hears it  Pushes to React  Table updates)*
+
+---
+
+### **3. Tech Stack Breakdown**
+
+| Component | Technology Used | File Location |
+| --- | --- | --- |
+| **Frontend UI** | **React (Vite) + TypeScript** | `src/App.tsx` |
+| **Styling** | **Tailwind CSS** | `src/index.css` |
+| **API Server** | **FastAPI (Python)** | `app/main.py` |
+| **Task Queue** | **Celery** | `app/core/celery_app.py` |
+| **Message Broker** | **Redis** | `docker-compose.yml` |
+| **HTML Fetcher** | **HTTPX (Async)** | `app/crawler/fetcher.py` |
+| **JS Rendering** | **Playwright (Headless Chrome)** | `app/crawler/fetcher.py` |
+| **HTML Parser** | **Selectolax** (High Speed) | `app/crawler/extractor.py` |
+| **PDF Parser** | **PyPDF** | `app/crawler/extractor.py` |
+| **Real-Time** | **WebSockets** | `app/api/websocket.py` |
+| **Container** | **Docker** | `Dockerfile.api` |
+
+
+
+
+
+
+# Top concept: Multiprocessing, Celery, and Redis:
+
+### **1. Multiprocessing (The Execution Model)**
+
+When you run the command `celery -A app worker --concurrency=4`, the operating system performs a **process fork**.
+
+-   **Replication:** The system creates **4 complete, independent copies** of your entire running Python program in RAM.
+    
+-   **Isolation:** Each of the 4 copies has its own private memory space and its own Python Interpreter instance. They do **not** share variables or memory.
+    
+-   **True Parallelism:** Because they are separate processes, the Operating System can assign each copy to a different physical CPU core. They execute instructions at the exact same time.
+    
+
+### **2. Redis (The Shared State & Broker)**
+
+Since the 4 worker processes have isolated memory, they cannot talk to each other directly. Redis acts as the **centralized external storage** that all 4 copies can access.
+
+-   **The Queue (Broker):** Redis maintains a **FIFO (First-In-First-Out) List** of tasks. It stores the serialized data (JSON) for every URL that needs to be crawled.
+    
+-   **The State:** Redis stores the `visited` set. All 4 processes check this single external set to see if a URL has been crawled, ensuring synchronization across the distributed system.
+    
+
+### **3. Celery (The Orchestrator)**
+
+Celery is the **protocol and management layer** that connects your Python code to Redis.
+
+-   **Serialization:** When `crawl_page.delay()` is called, Celery takes the function arguments, converts them into a specific JSON format (serialization), and pushes that payload into the Redis List.
+    
+-   **Deserialization:** When a Worker Process is idle, Celery pulls the JSON payload from Redis, converts it back into Python objects (deserialization), and executes the function.
+    
+
+### **Difference from Multithreading**
+
+-   **Multithreading:** Creates 4 threads inside **one** process. They share the **same** memory space and the **same** Python Interpreter. In Python, the **Global Interpreter Lock (GIL)** forces them to run one at a time (time-slicing), meaning they cannot utilize multiple CPU cores for calculation-heavy tasks.
+    
+-   **Multiprocessing (Your Project):** Bypasses the GIL completely because each of the 4 copies has its own lock. This allows 100% CPU utilization across multiple cores.
 
 
 
