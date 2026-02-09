@@ -419,6 +419,13 @@ This serves as a technical tour of your codebase.
 
 
 
+---
+---
+
+# Full Architecture:
+
+<img src="architecture.png">
+
 
 
 
